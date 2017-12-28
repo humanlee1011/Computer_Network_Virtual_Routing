@@ -63,7 +63,7 @@ public class Client {
 		@Override
 		public void run() {
 			try {
-				System.out.println("Open port 8080");
+				//System.out.println("Open port 8080");
 				ds = new DatagramSocket(ListeningPort);
 				serverThread = new RecvThread(ds);
 				serverThread.start();
@@ -87,10 +87,10 @@ public class Client {
 						String str = hostIP + "#" + ip + "#" + hostIP + "#check";
 						if (send(ip, str, "check", ListeningPort)) {
 							String msg = hostIP + "#" + ip + "#" + rt.toString() + hostIP + "#update";
-							//send(ip, msg, "update", ListeningPort);
+							send(ip, msg, "update", ListeningPort);
 						}
 					}
-					sleep(100000);
+					sleep(40000);
 				}
 			} catch (InterruptedException e) {
 				//遇到终止符时执行shutdown操作
@@ -169,7 +169,6 @@ public class Client {
 				System.out.println("IP: " + ip + "\nmsg: " + msg + "\nport: " + port);
 				DatagramPacket dp_send = new DatagramPacket(msg.getBytes(), msg.length(), nexthop, port);
 				ds.send(dp_send);
-				//
 				if (!command.equals("ACK")) {
 					portPool.put(ds, sendPort);
 					Thread t = new RecvThread(ds, rt.getNextHop(ip), command);
@@ -216,7 +215,7 @@ public class Client {
 				byte[] buf = new byte[1024];
 				DatagramPacket dp_recv = new DatagramPacket(buf, 1024);
 				if (!isServer())
-					this.ds.setSoTimeout(50000);
+					this.ds.setSoTimeout(30000);
 				boolean recvResponse = false;	
 				this.ds.receive(dp_recv);
 				//如果接收到的数据不是来自目标地址，则继续转发
@@ -252,7 +251,7 @@ public class Client {
 				}	
 				portPool.remove(ds);
 				if (isServer()) {
-					System.out.println("isPortBind changed");
+					//System.out.println("isPortBind changed");
 					if (serverThread != null) {
 						serverThread = null;
 					}
@@ -283,7 +282,7 @@ public class Client {
 		String res = hostIP + "#" + srcIP + "#" + hostIP + "#" + "ACK";
 		//System.out.println("Server" + Integer.toString(port));
 		if (msgs[3].equals("connect") && msgs.length == 5) {
-			System.out.println("into connect function");
+			//System.out.println("into connect function");
 			ipPool.add(srcIP);
 			rt.insert(srcIP, Integer.parseInt(msgs[4]));
 			System.out.println("srcIP:" + srcIP + ":" + res);

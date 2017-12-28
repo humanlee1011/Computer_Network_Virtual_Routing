@@ -64,6 +64,7 @@ public class RouteTable {
             String cost = msg[5];
             Record record = new Record(dest, ip, Integer.parseInt(cost));
             neighbor.add(record);
+            System.out.println("record" + i + ":" + record.toString());
         }
         // 根据邻居的表更新自己的路由表
         int direct_cost = computeCost(ip);
