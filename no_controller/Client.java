@@ -16,7 +16,9 @@ public class Client {
 	RouteTable rt;
 	String hostIP;
 	//维护连接状态的端口
+	//private boolean isPortBind = false;
 	private int ListeningPort;
+	//private boolean exit = false;
 	//directly connected ip address
 	private List<String> ipPool; 
 	// host server thread
@@ -57,15 +59,15 @@ public class Client {
 	
 	public class ServerThread extends Thread {
 		private DatagramSocket ds = null;
+		
+		@Override
 		public void run() {
 			try {
-				while (true) {
-					if (ds == null) {
-						ds = new DatagramSocket(ListeningPort);
-						serverThread = new RecvThread(ds);
-						serverThread.start();
-					}
-				}
+				System.out.println("Open port 8080");
+				ds = new DatagramSocket(ListeningPort);
+				serverThread = new RecvThread(ds);
+				serverThread.start();
+					
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
@@ -85,7 +87,7 @@ public class Client {
 						String str = hostIP + "#" + ip + "#" + hostIP + "#check";
 						if (send(ip, str, "check", ListeningPort)) {
 							String msg = hostIP + "#" + ip + "#" + rt.toString() + hostIP + "#update";
-							send(ip, msg, "update", ListeningPort);
+							//send(ip, msg, "update", ListeningPort);
 						}
 					}
 					sleep(100000);
@@ -102,6 +104,7 @@ public class Client {
 	public synchronized void connect(String ipStr, int cost) {
 		try {
 			String str = hostIP + "#" + ipStr + "#" + hostIP + "#connect#" + Integer.toString(cost);
+			rt.insert(ipStr, cost);
 			send(ipStr, str, "connect", ListeningPort);
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -152,22 +155,31 @@ public class Client {
 	
 	public boolean send(String ip, String msg, String command, int port) {
 		try {
+			System.out.println("Rt:\n" + rt.toString());
+			//System.out.println(ip + ": nextHop" + rt.getNextHop(ip));
 			if (rt.getNextHop(ip) == null) {
 				return false;
 			} else {
 				Random rand = new Random();
 				//随意选择一个端口发送消息
-				int sendPort = rand.nextInt(9999);
+				int sendPort = rand.nextInt(999) + 1024;
 				DatagramSocket ds = new DatagramSocket(sendPort);
 				InetAddress nexthop = InetAddress.getByName(ip);
 				//发送消息到对方的对应端口
+				System.out.println("IP: " + ip + "\nmsg: " + msg + "\nport: " + port);
 				DatagramPacket dp_send = new DatagramPacket(msg.getBytes(), msg.length(), nexthop, port);
-				
-				portPool.put(ds, sendPort);
 				ds.send(dp_send);
-				Thread t = new RecvThread(ds, rt.getNextHop(ip), command);
-				t.start();
-				threadPool.put(ip, t);
+				//
+				if (!command.equals("ACK")) {
+					portPool.put(ds, sendPort);
+					Thread t = new RecvThread(ds, rt.getNextHop(ip), command);
+					t.start();
+					threadPool.put(rt.getNextHop(ip), t);
+				} else {//如果本机是原数据包的目标主机，则直接发送且关闭ds
+					ds.close();
+					//isPortBind = false;
+					ds = null;
+				}
 				return true;
 			}
 		} catch (Exception e) {
@@ -195,7 +207,7 @@ public class Client {
 		
 
 		public boolean isServer() {
-			return command == null;
+			return command == null || command.equals("");
 		}
 		
 		@Override
@@ -225,7 +237,7 @@ public class Client {
 							ServerAnalyse(str, srcIP, dp_recv.getPort());
 						}
 						else { //该线程作为客户端的线程
-							ClientAnalyse(str, command, srcIP, dp_recv.getPort());
+							ClientAnalyse(str, command, srcIP);
 						}
 					}
 					else { //在path上增加本机IP地址再转发
@@ -239,7 +251,16 @@ public class Client {
 					rt.remove(this.src);
 				}	
 				portPool.remove(ds);
+				if (isServer()) {
+					System.out.println("isPortBind changed");
+					if (serverThread != null) {
+						serverThread = null;
+					}
+					serverThread = new ServerThread();
+					serverThread.start();
+				}
 				ds.close();
+				ds = null;
 			} catch (Exception e) {
 				e.printStackTrace();
 				ds.close();
@@ -260,19 +281,25 @@ public class Client {
 	public void ServerAnalyse(String data, String srcIP, int port) {
 		String[] msgs = data.split("#");
 		String res = hostIP + "#" + srcIP + "#" + hostIP + "#" + "ACK";
+		//System.out.println("Server" + Integer.toString(port));
 		if (msgs[3].equals("connect") && msgs.length == 5) {
+			System.out.println("into connect function");
 			ipPool.add(srcIP);
 			rt.insert(srcIP, Integer.parseInt(msgs[4]));
-			send(srcIP, res + msgs[4], null, port);
+			System.out.println("srcIP:" + srcIP + ":" + res);
+			System.out.println(rt.toString());
+			send(srcIP, res, "ACK", port);
 		} else if (msgs[3].equals("disconnect")) {
 			ipPool.remove(srcIP);
 			rt.remove(srcIP);
-			send(srcIP, res, null, port);
+			send(srcIP, res, "ACK", port);
 		} else if (msgs[3].equals("check")) {
-			send(srcIP, res, null, port);
+			send(srcIP, res, "ACK", port);
 		} else if (msgs[3].equals("update")) {
 			//更新拓扑图结构
 			rt.update(msgs[0], msgs[2]);
+		} else {
+			send(srcIP, res, "ACK", port);
 		}
 		//打印传送的数据
 		System.out.println("received data from " + msgs[0] + ":" + Integer.toString(port) + "--->" + msgs[3]);
@@ -280,19 +307,22 @@ public class Client {
 	}
 	
 	//作为客户端接收到信息
-	public void ClientAnalyse(String data, String command, String srcIP, int port) {
+	public void ClientAnalyse(String data, String command, String srcIP) {
 		//msgs = [srcIP#dstIP#path#data#cost]
 		String[] msgs = data.split("#");
 		if (command.equals("connect") && msgs[3].equals("ACK")) {
 			ipPool.add(srcIP);
-			rt.insert(srcIP, Integer.parseInt(msgs[4]));
+			System.out.println("成功与" + srcIP + "连接");
 		} else if (command.equals("disconnect") && msgs[3].equals("ACK")) {
 			ipPool.remove(srcIP);
 			rt.remove(srcIP);
+			System.out.println("成功与" + srcIP + "断开连接");
 		} else if (command.equals("check") && msgs[3].equals("ACK")) {
 			//不进行任何操作
 		} else if (command.equals("update") && msgs[3].equals("ACK")) {
 			rt.update(msgs[0], msgs[2]);
+		} else if (command.equals("send") && msgs[3].equals("ACK")) {
+			System.out.println("成功给" + srcIP + "发送消息");
 		}
 	}
 	
@@ -317,17 +347,12 @@ public class Client {
 				System.out.println(inputs[0]);
 				if (inputs[0].equals("connect") && inputs.length == 3) {
 					client.connect(inputs[1], Integer.parseInt(inputs[2]));
-					System.out.println("成功与" + inputs[1] + "连接");
 				} else if (inputs[0].equals("disconnect") && inputs.length == 2) {
-					if (client.disconnect(inputs[1]))
-						System.out.println("成功与" + inputs[1] + "断开连接");
-					else 
+					if (!client.disconnect(inputs[1]))
 						System.out.println(inputs[1] + "已经断开连接.");
 				} else if (inputs[0].equals("send") && inputs.length == 3) {
 					String str = ip + "#" + inputs[1] + "#" + ip + "#" + inputs[2];
-					if (client.send(inputs[1], str, "send", port))
-						System.out.println("成功给" + inputs[1] + "发送消息：" + inputs[2]);
-					else
+					if (!client.send(inputs[1], str, "send", port))
 						System.out.println(inputs[1] + "无法达到");
 				} else {
 					System.out.println("该命令无效");

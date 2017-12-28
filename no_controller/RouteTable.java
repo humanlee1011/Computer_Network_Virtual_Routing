@@ -19,7 +19,7 @@ public class RouteTable {
 	public void insert(String ip, int cost) {
         Record record = new Record(ip, ip, cost);
         for (int i = 0; i < routeTable_.size(); i++) {
-            if ((routeTable_.get(i).getDst_() == ip) && (routeTable_.get(i).getNextHop_() == ip)) {
+            if ((routeTable_.get(i).getDst_().equals(ip)) && (routeTable_.get(i).getNextHop_().equals(ip))) {
                 System.out.print("You have already had such an item:\n" + routeTable_.get(i).toString());
                 System.out.print("Are you sure you want to change it? yes/no");
                 Scanner scanner = new Scanner(System.in);
@@ -43,7 +43,7 @@ public class RouteTable {
             String dest, nextHop;
             dest = routeTable_.get(i).getDst_();
             nextHop = routeTable_.get(i).getNextHop_();
-            if ((dest == ip) && (nextHop == ip)) {
+            if ((dest.equals(ip)) && (nextHop.equals(ip))) {
                 routeTable_.remove(i);
             }
         }
@@ -99,7 +99,7 @@ public class RouteTable {
     public String getNextHop(String dst) {
         String result = null;
         for (int i = 0; i < routeTable_.size(); i++) {
-            if (routeTable_.get(i).getDst_() == dst) {
+            if (routeTable_.get(i).getDst_().equals(dst)) {
                 result = routeTable_.get(i).getNextHop_();
             }
         }
